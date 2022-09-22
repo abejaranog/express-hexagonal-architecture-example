@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+  
+Parameters:
+  EnvironmentStackName:
+    Type: String
+    AllowedValues: [qa, prod]
+
+Resources:
+  LambdaFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: api/
+      Timeout: 60
+      Handler: lambda.handler
+      Runtime: nodejs14.x
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          NODE_ENV: !Ref EnvironmentStackName
+      Events:
+        API:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /{proxy+}
+            Method: GET
+            RestApiId: !Ref APIGateway
+            Auth:
+              ApiKeyRequired: true
+    Metadata:
+      BuildProperties:
+        UseNpmCi: True
+
+  APIGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref EnvironmentStackName
+      OpenApiVersion: '2.0'
+      Auth:
+        ApiKeyRequired: true
+
+  ApiKey: 
+    Type: AWS::ApiGateway::ApiKey
+    Properties: 
+      Name: ApiKey
+      Enabled: true
+
+  APIUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      ApiStages: 
+      - ApiId: !Ref APIGateway
+        Stage: !Ref APIGateway.Stage
+      Throttle:
+        BurstLimit: 5000
+        RateLimit: 10000
+      UsagePlanName: APIUsagePlan
+
+  APIKeyUsage:
+    Type: "AWS::ApiGateway::UsagePlanKey"
+    Properties:
+      KeyId: !Ref ApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref APIUsagePlan
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  Api:
+    Description: "API Gateway endpoint URL for Prod stage for  API function"
+    Value: !Sub "https://${APIGateway}.execute-api.${AWS::Region}.amazonaws.com/${EnvironmentStackName}/"
+
